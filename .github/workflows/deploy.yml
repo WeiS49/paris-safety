@@ -1,0 +1,37 @@
+name: Update Paris Safety Map
+
+on:
+  schedule:
+    # 巴黎时间 9:00 (UTC 8:00) 和 21:00 (UTC 20:00)
+    - cron: '0 8,20 * * *'
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+
+      - run: uv sync
+        name: Install dependencies
+
+      - run: uv run python src/main.py
+        name: Generate safety map
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: output/
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
