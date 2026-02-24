@@ -3,7 +3,7 @@ RSS 抓取模块 — 从多个新闻源获取巴黎安全相关新闻
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 import feedparser
@@ -34,16 +34,37 @@ RSS_SOURCES: list[dict] = [
         "url": "https://www.france24.com/en/france/rss",
         "language": "en",
     },
+    {
+        "name": "Le Parisien - Paris",
+        "url": "https://feeds.leparisien.fr/leparisien/rss/paris-75",
+        "language": "fr",
+    },
+    {
+        "name": "BFM TV - Paris",
+        "url": "https://www.bfmtv.com/rss/paris/",
+        "language": "fr",
+    },
+    {
+        "name": "Franceinfo - Faits-Divers",
+        "url": "https://www.franceinfo.fr/faits-divers/rss",
+        "language": "fr",
+    },
+    {
+        "name": "Le Parisien - Main",
+        "url": "https://feeds.leparisien.fr/leparisien/rss",
+        "language": "fr",
+    },
 ]
 
 
-def fetch_articles(source: dict, limit: int = 20) -> list[dict]:
+def fetch_articles(source: dict, limit: int = 50, max_age_days: int = 7) -> list[dict]:
     """
     从单个 RSS 源抓取文章列表。
 
     Args:
         source: 包含 name/url/language 的新闻源字典
-        limit: 最多返回的文章数量
+        limit: 最多扫描的 RSS 条目数（过滤前）
+        max_age_days: 只保留最近 N 天内的文章，0 表示不过滤
 
     Returns:
         文章字典列表，每条包含 title/url/summary/published/source_name
@@ -59,7 +80,9 @@ def fetch_articles(source: dict, limit: int = 20) -> list[dict]:
         if feed.bozo and feed.bozo_exception:
             logger.warning(f"RSS 解析警告 [{source_name}]: {feed.bozo_exception}")
 
+        now = datetime.now(timezone.utc)
         articles: list[dict] = []
+        skipped_old = 0
 
         for entry in feed.entries[:limit]:
             # 提取文章链接
@@ -83,6 +106,17 @@ def fetch_articles(source: dict, limit: int = 20) -> list[dict]:
                 except (ValueError, TypeError) as e:
                     logger.debug(f"时间解析失败: {e}")
 
+            # 日期过滤：有日期且超过 max_age_days → 跳过；无日期 → 保留
+            if max_age_days > 0 and published:
+                try:
+                    pub_dt = datetime.fromisoformat(published).replace(tzinfo=timezone.utc)
+                    age_days = (now - pub_dt).days
+                    if age_days > max_age_days:
+                        skipped_old += 1
+                        continue
+                except (ValueError, TypeError):
+                    pass  # 解析失败时保留文章
+
             articles.append(
                 {
                     "title": entry.get("title", "（无标题）"),
@@ -94,6 +128,8 @@ def fetch_articles(source: dict, limit: int = 20) -> list[dict]:
                 }
             )
 
+        if skipped_old:
+            logger.info(f"  过滤掉 {skipped_old} 篇超过 {max_age_days} 天的旧文章")
         logger.info(f"  成功获取 {len(articles)} 篇文章")
         return articles
 
@@ -102,7 +138,7 @@ def fetch_articles(source: dict, limit: int = 20) -> list[dict]:
         return []
 
 
-def fetch_all(sources: Optional[list[dict]] = None, limit: int = 20) -> list[dict]:
+def fetch_all(sources: Optional[list[dict]] = None, limit: int = 50) -> list[dict]:
     """
     从所有 RSS 源抓取文章。
 

@@ -50,9 +50,9 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--limit",
         type=int,
-        default=20,
+        default=50,
         metavar="N",
-        help="每个 RSS 源最多抓取的文章数（默认: 20）",
+        help="每个 RSS 源最多抓取的文章数（默认: 50）",
     )
     parser.add_argument(
         "--no-translate",
